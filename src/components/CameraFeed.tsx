@@ -16,6 +16,8 @@ type Props = {
   url: string;
   height?: number;
   framed?: boolean;
+  showOverlays?: boolean;
+  fit?: 'cover' | 'contain';
 };
 
 interface ParsedUrl {
@@ -41,11 +43,11 @@ function parseUrl(rawUrl: string): ParsedUrl {
   }
 }
 
-function buildHtml(cleanUrl: string, username: string, password: string): string {
+function buildHtml(cleanUrl: string, username: string, password: string, fit: 'cover' | 'contain'): string {
   const u = JSON.stringify(cleanUrl);
   const usr = JSON.stringify(username);
   const pwd = JSON.stringify(password);
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden}#c{display:block;width:100vw;height:100vh;object-fit:cover;filter:brightness(.78) contrast(1.08)}</style></head><body><img id="c"><script>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden}#c{display:block;width:100vw;height:100vh;object-fit:${fit};filter:brightness(.78) contrast(1.08)}</style></head><body><img id="c"><script>
 var url=${u},usr=${usr},pwd=${pwd};
 function refresh(){
   var xhr=new XMLHttpRequest();
@@ -69,7 +71,7 @@ refresh();
 </script></body></html>`;
 }
 
-export function CameraFeed({ url, height = 240, framed = false }: Props) {
+export function CameraFeed({ url, height = 240, framed = false, showOverlays = true, fit = 'cover' }: Props) {
   const { width, height: screenHeight } = useWindowDimensions();
   const overlayScale = clamp(Math.min(width / 430, screenHeight / 900), 0.76, 1);
   const [error, setError] = useState(false);
@@ -79,8 +81,8 @@ export function CameraFeed({ url, height = 240, framed = false }: Props) {
   const isRtsp = url.startsWith('rtsp://');
   const { cleanUrl, baseUrl, username, password } = useMemo(() => parseUrl(url), [url]);
   const html = useMemo(
-    () => buildHtml(cleanUrl, username, password),
-    [cleanUrl, username, password],
+    () => buildHtml(cleanUrl, username, password, fit),
+    [cleanUrl, username, password, fit],
   );
 
   useEffect(() => {
@@ -98,6 +100,10 @@ export function CameraFeed({ url, height = 240, framed = false }: Props) {
 
     return () => appStateSub.remove();
   }, [url]);
+
+  if (!showOverlays && (!url || isRtsp || error)) {
+    return <View style={[styles.container, { height }]} />;
+  }
 
   if (!url) {
     return (
@@ -151,6 +157,8 @@ export function CameraFeed({ url, height = 240, framed = false }: Props) {
         showsHorizontalScrollIndicator={false}
       />
 
+      {showOverlays ? (
+        <>
       <LinearGradient
         pointerEvents="none"
         colors={['rgba(0,0,0,0.62)', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.58)']}
@@ -237,6 +245,8 @@ export function CameraFeed({ url, height = 240, framed = false }: Props) {
           ]}
         />
       </View>
+        </>
+      ) : null}
     </View>
   );
 }

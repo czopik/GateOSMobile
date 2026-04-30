@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,18 +20,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-type GateTabBarProps = {
-  state: {
-    index: number;
-    routes: Array<{ key: string; name: string }>;
-  };
-  descriptors: Record<string, { options: { title?: string } }>;
-  navigation: {
-    emit: (event: { type: string; target?: string; canPreventDefault?: boolean }) => { defaultPrevented?: boolean };
-    navigate: (name: string) => void;
-  };
-};
-
 const TAB_META: Record<string, { icon: string; label: string }> = {
   Brama: { icon: 'gate', label: 'Brama' },
   Kamery: { icon: 'cctv', label: 'Kamery' },
@@ -39,7 +27,7 @@ const TAB_META: Record<string, { icon: string; label: string }> = {
   Ustawienia: { icon: 'cog-outline', label: 'Ustawienia' },
 };
 
-function GateTabBar({ state, descriptors, navigation }: GateTabBarProps) {
+function GateTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const scale = clamp(Math.min(width / 430, height / 900), 0.78, 1);
@@ -132,7 +120,7 @@ function GateTabBar({ state, descriptors, navigation }: GateTabBarProps) {
 function MainTabs() {
   return (
     <Tab.Navigator
-      tabBar={(props: GateTabBarProps) => <GateTabBar {...props} />}
+      tabBar={(props: BottomTabBarProps) => <GateTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Brama" component={HomeScreen} />

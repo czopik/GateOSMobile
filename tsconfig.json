@@ -11,5 +11,9 @@
     "resolveJsonModule": true,
     "types": []
   },
-  "include": ["index.js", "src", "expo-env.d.ts"]
+  "include": [
+    "index.js",
+    "src"
+  ],
+  "extends": "expo/tsconfig.base"
 }

@@ -25,17 +25,52 @@ const GREEN = '#22C55E';
 const CARD_BG = '#0D1F2D';
 
 type ButtonPhase = 'idle' | 'holding' | 'cooldown';
-type GateCommand = 'OPEN' | 'CLOSE' | 'STOP';
+type GateCommand = 'TOGGLE' | 'STOP';
+type ButtonLabel = {
+  actionLabel: string;
+  subLabel: string;
+  iconName: string;
+};
 
 function isGateMoving(status: string): boolean {
   return ['opening', 'closing', 'moving', 'active', 'running', 'opening_gate', 'closing_gate'].includes(status);
 }
 
-function getNextCommand(status: string, position: number): GateCommand {
+function getNextCommand(status: string): GateCommand {
   if (isGateMoving(status)) return 'STOP';
-  if (status === 'closed') return 'OPEN';
-  if (status === 'open') return 'CLOSE';
-  return position <= 50 ? 'OPEN' : 'CLOSE';
+  return 'TOGGLE';
+}
+
+function getButtonLabel(status: string, limitOpen?: boolean | null, limitClosed?: boolean | null): ButtonLabel {
+  if (isGateMoving(status)) {
+    return {
+      actionLabel: 'ZATRZYMAJ',
+      subLabel: 'Brama jest w ruchu',
+      iconName: 'stop',
+    };
+  }
+
+  if (status === 'open' || limitOpen === true) {
+    return {
+      actionLabel: 'ZAMKNIJ',
+      subLabel: 'Brama jest otwarta',
+      iconName: 'arrow-down',
+    };
+  }
+
+  if (status === 'closed' || limitClosed === true) {
+    return {
+      actionLabel: 'OTWÓRZ',
+      subLabel: 'Brama jest zamknięta',
+      iconName: 'arrow-up',
+    };
+  }
+
+  return {
+    actionLabel: 'STERUJ',
+    subLabel: 'Naciśnij, aby przełączyć',
+    iconName: 'gesture-tap-button',
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +81,8 @@ function GateControlButton({
   phase,
   gateStatus,
   position,
+  limitOpen,
+  limitClosed,
   disabled,
   fillProgress,
   pressScale,
@@ -55,6 +92,8 @@ function GateControlButton({
   phase: ButtonPhase;
   gateStatus: string;
   position: number;
+  limitOpen: boolean | null;
+  limitClosed: boolean | null;
   disabled: boolean;
   fillProgress: any;
   pressScale: any;
@@ -63,8 +102,7 @@ function GateControlButton({
 }) {
   const [btnWidth, setBtnWidth] = useState(0);
   const isMoving = isGateMoving(gateStatus);
-  const isOpen = gateStatus === 'open';
-  const isClosed = gateStatus === 'closed';
+  const buttonLabel = getButtonLabel(gateStatus, limitOpen, limitClosed);
 
   const onLayout = (e: any) => setBtnWidth(e.nativeEvent.layout.width);
 
@@ -105,10 +143,10 @@ function GateControlButton({
           </View>
           <View style={styles.progressTextBlock}>
             <Text style={[styles.progressLabel, { color: STOP_RED }]} allowFontScaling={false}>
-              {'ZATRZYMAJ'}
+              {buttonLabel.actionLabel}
             </Text>
             <Text style={styles.progressPct} allowFontScaling={false}>
-              Brama jest w ruchu • {pct}%
+              {buttonLabel.subLabel} • {pct}%
             </Text>
           </View>
         </Pressable>
@@ -117,10 +155,6 @@ function GateControlButton({
   }
 
   // ── Idle / holding / cooldown ──────────────────────────────────────────────
-  const actionLabel = isOpen ? 'ZAMKNIJ' : isClosed ? 'OTWÓRZ' : 'STERUJ';
-
-  const subLabel = isOpen ? 'Brama jest otwarta' : isClosed ? 'Brama jest zamknięta' : 'Naciśnij, aby przełączyć';
-  const arrowIcon = isOpen ? 'arrow-down' : isClosed ? 'arrow-up' : 'gesture-tap-button';
   const btnBg = phase === 'cooldown' ? '#15532E' : GREEN;
 
   return (
@@ -139,14 +173,14 @@ function GateControlButton({
           />
         )}
         <View style={styles.btnIconCircle}>
-          <MaterialCommunityIcons name={arrowIcon as any} size={24} color={GREEN} />
+          <MaterialCommunityIcons name={buttonLabel.iconName as any} size={24} color={GREEN} />
         </View>
         <View style={styles.btnTextBlock}>
           <Text style={styles.btnMainLabel} allowFontScaling={false} numberOfLines={1}>
-            {actionLabel}
+            {buttonLabel.actionLabel}
           </Text>
           <Text style={styles.btnSubLabel} allowFontScaling={false} numberOfLines={1}>
-            {subLabel}
+            {buttonLabel.subLabel}
           </Text>
         </View>
       </Pressable>
@@ -155,7 +189,7 @@ function GateControlButton({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STATUS SYSTEMU card
+// STATUS card
 // ─────────────────────────────────────────────────────────────────────────────
 type BadgeVariant = 'ok' | 'inactive' | 'warn' | 'error';
 
@@ -222,23 +256,18 @@ function SystemRow({
 }
 
 function SystemStatusCard({
-  status,
   limitOpen,
   limitClosed,
-  isOnline,
 }: {
-  status: string;
   limitOpen: boolean | null;
   limitClosed: boolean | null;
-  isOnline: boolean;
 }) {
   const closedOk = limitClosed === true;
   const openOk   = limitOpen === true;
-  const sysOk    = isOnline && status !== 'error';
 
   return (
     <View style={styles.card}>
-      <Text style={styles.sectionHeader}>STATUS SYSTEMU</Text>
+      <Text style={styles.sectionHeader}>STATUS</Text>
       <SystemRow
         iconName="lock"
         iconColor={closedOk ? GREEN : '#64748B'}
@@ -256,15 +285,6 @@ function SystemStatusCard({
         badge={openOk ? 'OK' : 'NIEAKTYWNA'}
         badgeVariant={openOk ? 'ok' : 'inactive'}
       />
-      <View style={styles.systemRowDivider} />
-      <SystemRow
-        iconName="cog"
-        iconColor={sysOk ? GREEN : Colors.danger}
-        title="System"
-        subtitle={sysOk ? 'Gotowy do pracy' : (isOnline ? 'Błąd sterownika' : 'Brak połączenia')}
-        badge={sysOk ? 'OK' : 'BŁĄD'}
-        badgeVariant={sysOk ? 'ok' : 'error'}
-      />
     </View>
   );
 }
@@ -276,7 +296,7 @@ export function HomeScreen() {
   const { config } = useContext(AuthContext);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { status, position, isOnline, refresh, limitOpen, limitClosed } = useGateStatus();
+  const { status, position, refresh, limitOpen, limitClosed } = useGateStatus();
   const compact = height < 760;
   const tabBarHeight = height < 760 ? 74 : 92;
   const cameraHeight = Math.max(compact ? 150 : 170, Math.min(width * 0.62, compact ? 210 : 260));
@@ -354,7 +374,7 @@ export function HomeScreen() {
 
       Vibration.vibrate([0, 50, 80, 50]);
 
-      const cmd = getNextCommand(status, position);
+      const cmd = getNextCommand(status);
       const sendCmd = async () => {
         setSending(true);
         try {
@@ -421,23 +441,6 @@ export function HomeScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <View style={styles.header}>
-          <Pressable style={styles.headerIconBtn} hitSlop={8}>
-            <MaterialCommunityIcons name="menu" size={26} color={Colors.text} />
-          </Pressable>
-          <View style={styles.headerTitle}>
-            <Text style={styles.headerTitleText} allowFontScaling={false} numberOfLines={1}>
-              Brama wjazdowa
-            </Text>
-            <MaterialCommunityIcons name="chevron-down" size={18} color={Colors.muted} />
-          </View>
-          <Pressable style={styles.headerIconBtn} hitSlop={8}>
-            <MaterialCommunityIcons name="bell-outline" size={24} color={Colors.text} />
-            <View style={styles.notifDot} />
-          </Pressable>
-        </View>
-
         {/* ── Camera ─────────────────────────────────────────────────────── */}
         <View style={styles.cameraWrapper}>
           <CameraFeed url={config?.cameraUrl ?? ''} height={cameraHeight} framed />
@@ -457,6 +460,8 @@ export function HomeScreen() {
               phase={phase}
               gateStatus={status}
               position={position}
+              limitOpen={limitOpen}
+              limitClosed={limitClosed}
               disabled={isSendingCommand}
               fillProgress={fillProgress}
               pressScale={pressScale}
@@ -476,12 +481,10 @@ export function HomeScreen() {
           )}
         </View>
 
-        {/* ── STATUS SYSTEMU ─────────────────────────────────────────────── */}
+        {/* ── STATUS ─────────────────────────────────────────────────────── */}
         <SystemStatusCard
-          status={status}
           limitOpen={limitOpen}
           limitClosed={limitClosed}
-          isOnline={isOnline}
         />
       </ScrollView>
     </SafeAreaView>
@@ -512,41 +515,6 @@ const styles = StyleSheet.create({
   cameraWrapper: {
     borderRadius: 18,
     overflow: 'hidden',
-  },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 8,
-  },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  headerTitleText: {
-    color: Colors.text,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  notifDot: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: GREEN,
   },
 
   // Generic section / card
@@ -585,6 +553,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   gateButton: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 18,
@@ -601,6 +570,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderRadius: 18,
+    zIndex: 0,
   },
   btnIconCircle: {
     width: 38,
@@ -610,8 +580,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    zIndex: 2,
+    elevation: 2,
   },
-  btnTextBlock: { flex: 1, minWidth: 0 },
+  btnTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    zIndex: 2,
+    elevation: 2,
+  },
   btnMainLabel: {
     color: '#fff',
     fontSize: 17,
@@ -631,6 +608,7 @@ const styles = StyleSheet.create({
   },
 
   progressBarShell: {
+    position: 'relative',
     minHeight: 62,
     borderRadius: 18,
     backgroundColor: CARD_BG,
@@ -650,6 +628,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     opacity: 0.3,
     borderRadius: 18,
+    zIndex: 0,
   },
   progressIconCircle: {
     width: 38,
@@ -659,8 +638,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     flexShrink: 0,
+    zIndex: 2,
+    elevation: 2,
   },
-  progressTextBlock: { flex: 1, minWidth: 0 },
+  progressTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    zIndex: 2,
+    elevation: 2,
+  },
   progressLabel: {
     fontSize: 17,
     fontWeight: '900',
