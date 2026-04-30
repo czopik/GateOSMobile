@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "ChemiX Gate",
+    "slug": "chemix-gate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.gateos.mobile",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#10252F"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.gateos.mobile"
+    }
+  }
+}
