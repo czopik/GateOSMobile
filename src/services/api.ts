@@ -3,14 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceConfig, GateDiagnostics, GateEvent, GateState, SystemMetrics } from '../types';
 
 const STORAGE_KEY = 'deviceConfig';
-const LEGACY_CAMERA_URL = 'http://admin:chemik!1983@chemixxx.duckdns.org:8081/ISAPI/Streaming/channels/2/picture';
+const LEGACY_CAMERA_URL = '';
 
 export const DEFAULT_DEVICE_CONFIG: DeviceConfig = {
   name: 'ChemiX Gate',
-  host: 'chemixxx.duckdns.org',
+  host: '',
   port: 8080,
   token: '',
-  cameraUrl: 'http://admin:chemik!1983@chemixxx.duckdns.org:8088/ISAPI/Streaming/channels/2/picture',
+  cameraUrl: '',
   cameraUrl2: '',
   cameraUrl3: '',
 };
