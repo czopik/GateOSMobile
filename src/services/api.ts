@@ -4,6 +4,9 @@ import { DeviceConfig, GateDiagnostics, GateEvent, GateState, SystemMetrics } fr
 
 const STORAGE_KEY = 'deviceConfig';
 const LEGACY_CAMERA_URL = '';
+const LITE_TIMEOUT_MS = 2500;
+const STATUS_TIMEOUT_MS = 5000;
+const COMMAND_TIMEOUT_MS = 7000;
 
 export const DEFAULT_DEVICE_CONFIG: DeviceConfig = {
   name: 'ChemiX Gate',
@@ -46,7 +49,7 @@ class APIClient {
   private config: DeviceConfig = DEFAULT_DEVICE_CONFIG;
 
   constructor() {
-    this.client = axios.create({ timeout: 10000 });
+    this.client = axios.create({ timeout: 4000 });
     this.client.interceptors.request.use((config: any) => {
       if (this.token) {
         config.headers = config.headers ?? {};
@@ -136,7 +139,7 @@ class APIClient {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await this.client.get('/api/status-lite');
+      const response = await this.client.get('/api/status-lite', { timeout: LITE_TIMEOUT_MS });
       return response.status === 200;
     } catch {
       return false;
@@ -144,12 +147,12 @@ class APIClient {
   }
 
   async getGateState(): Promise<GateState> {
-    const response = await this.client.get('/api/status-lite');
+    const response = await this.client.get('/api/status-lite', { timeout: LITE_TIMEOUT_MS });
     return this.mapGateState(response.data);
   }
 
   async getGateDetails(): Promise<{ gateState: GateState; events: GateEvent[]; metrics: SystemMetrics }> {
-    const response = await this.client.get('/api/status');
+    const response = await this.client.get('/api/status', { timeout: STATUS_TIMEOUT_MS });
     const data = response.data.data ?? response.data;
     return {
       gateState: this.mapGateState(data),
@@ -160,7 +163,7 @@ class APIClient {
 
   async sendGateCommand(command: 'OPEN' | 'CLOSE' | 'STOP' | 'TOGGLE'): Promise<void> {
     try {
-      await this.client.post('/api/control', { action: command.toLowerCase() });
+      await this.client.post('/api/control', { action: command.toLowerCase() }, { timeout: COMMAND_TIMEOUT_MS });
     } catch (error) {
       throw new Error(this.describeAxiosError(error, 'Nie udało się wysłać komendy do bramy'));
     }
@@ -168,7 +171,7 @@ class APIClient {
 
   async getMetrics(): Promise<SystemMetrics> {
     try {
-      const response = await this.client.get('/api/status');
+      const response = await this.client.get('/api/status', { timeout: STATUS_TIMEOUT_MS });
       const data = response.data.data ?? response.data;
       return this.mapMetrics(data);
     } catch {
@@ -189,7 +192,7 @@ class APIClient {
   }
 
   async getDiagnostics(): Promise<GateDiagnostics> {
-    const response = await this.client.get('/api/diagnostics');
+    const response = await this.client.get('/api/diagnostics', { timeout: STATUS_TIMEOUT_MS });
     return this.mapDiagnostics(response.data.data ?? response.data);
   }
 
@@ -198,18 +201,18 @@ class APIClient {
     const maxDistance = typeof maxDistanceM === 'number' && maxDistanceM > 0 ? maxDistanceM : 10;
     const position = Number(((bounded / 100) * maxDistance).toFixed(3));
     try {
-      await this.client.post('/api/move', { position });
+      await this.client.post('/api/move', { position }, { timeout: COMMAND_TIMEOUT_MS });
     } catch (error) {
       throw new Error(this.describeAxiosError(error, 'Nie udało się wysłać pozycji bramy'));
     }
   }
 
   async reboot(): Promise<void> {
-    await this.client.post('/api/reboot');
+    await this.client.post('/api/reboot', undefined, { timeout: COMMAND_TIMEOUT_MS });
   }
 
   async testMqtt(): Promise<boolean> {
-    const response = await this.client.post('/api/mqtt/test');
+    const response = await this.client.post('/api/mqtt/test', undefined, { timeout: COMMAND_TIMEOUT_MS });
     const data = response.data.data ?? response.data;
     return Boolean(data?.ok ?? data?.success ?? data?.connected ?? response.status === 200);
   }

@@ -43,10 +43,14 @@ export function GateProvider({ children }: { children: any }) {
   const [error, setError] = useState(null as string | null);
   const liteSeqRef = useRef(0);
   const fullSeqRef = useRef(0);
+  const liteInFlightRef = useRef(false);
+  const fullInFlightRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const wsConnectedRef = useRef(false);
 
   const refreshLite = useCallback(async () => {
+    if (liteInFlightRef.current) return;
+    liteInFlightRef.current = true;
     const seq = ++liteSeqRef.current;
     try {
       const next = await api.getGateState();
@@ -61,10 +65,14 @@ export function GateProvider({ children }: { children: any }) {
     } catch (e) {
       if (seq !== liteSeqRef.current) return;
       setError(e instanceof Error ? e.message : 'Nieznany błąd');
+    } finally {
+      liteInFlightRef.current = false;
     }
   }, []);
 
   const refreshState = useCallback(async () => {
+    if (fullInFlightRef.current) return;
+    fullInFlightRef.current = true;
     const seq = ++fullSeqRef.current;
     try {
       const details = await api.getGateDetails();
@@ -81,6 +89,8 @@ export function GateProvider({ children }: { children: any }) {
     } catch (e) {
       if (seq !== fullSeqRef.current) return;
       setError(e instanceof Error ? e.message : 'Nieznany błąd');
+    } finally {
+      fullInFlightRef.current = false;
     }
   }, []);
 
@@ -106,8 +116,8 @@ export function GateProvider({ children }: { children: any }) {
     refreshNow();
     const liteId = setInterval(() => {
       if (!wsConnectedRef.current) void refreshLite();
-    }, 700);
-    const fullId = setInterval(refreshState, 3000);
+    }, 2000);
+    const fullId = setInterval(refreshState, 10000);
     const appStateSub = AppState.addEventListener('change', (nextState: string) => {
       if (nextState === 'active') {
         refreshNow();
