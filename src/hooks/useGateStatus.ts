@@ -19,12 +19,8 @@ export function useGateStatus() {
     const position = Math.max(0, Math.min(100, gateState?.position ?? 0));
     const status = gateState?.status ?? 'unknown';
     const label = STATUS_LABELS[status] ?? 'BRAK DANYCH';
-    // isOnline: true when we successfully received any state and there's no REST error.
-    // wifiConnected reflects ESP32's own WiFi – it is NOT a reliable indicator of
-    // whether the app can currently reach the controller.
     const isOnline = gateState !== null && !gate.error;
 
-    // Derive limit switch states from API or position
     const limitOpen = gateState?.limitOpen ?? (status === 'open' || position >= 98);
     const limitClosed = gateState?.limitClosed ?? (status === 'closed' || position <= 2);
 

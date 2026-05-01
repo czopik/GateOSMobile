@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DeviceConfig, GateEvent, GateState, SystemMetrics } from '../types';
+import { DeviceConfig, GateDiagnostics, GateEvent, GateState, SystemMetrics } from '../types';
 
 const STORAGE_KEY = 'deviceConfig';
 const LEGACY_CAMERA_URL = 'http://admin:chemik!1983@chemixxx.duckdns.org:8081/ISAPI/Streaming/channels/2/picture';
@@ -19,6 +19,7 @@ const DEFAULT_GATE_STATE: GateState = {
   status: 'unknown',
   rawState: 'unknown',
   position: 0,
+  maxDistanceM: null,
   targetPosition: null,
   lastUpdate: 0,
   isMoving: false,
@@ -42,6 +43,7 @@ const DEFAULT_GATE_STATE: GateState = {
 class APIClient {
   private client: AxiosInstance;
   private token = '';
+  private config: DeviceConfig = DEFAULT_DEVICE_CONFIG;
 
   constructor() {
     this.client = axios.create({ timeout: 10000 });
@@ -68,7 +70,7 @@ class APIClient {
 
   private normalizeConfig(config?: Partial<DeviceConfig> | null): DeviceConfig {
     const storedCameraUrl = typeof config?.cameraUrl === 'string' && config.cameraUrl ? config.cameraUrl : '';
-    const host = typeof config?.host === 'string' && config.host.trim() ? config.host.trim() : DEFAULT_DEVICE_CONFIG.host;
+    const host = this.normalizeHost(config?.host);
     const port = Number(config?.port);
 
     return {
@@ -82,9 +84,23 @@ class APIClient {
     };
   }
 
+  private normalizeHost(host?: string): string {
+    if (typeof host !== 'string') return DEFAULT_DEVICE_CONFIG.host;
+    return host
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/+$/g, '') || DEFAULT_DEVICE_CONFIG.host;
+  }
+
   private applyConfig(config: DeviceConfig): void {
+    this.config = config;
     this.token = config.token;
     this.client.defaults.baseURL = `http://${config.host}:${config.port}`;
+  }
+
+  getWsUrl(): string {
+    const tokenPart = this.token ? `?token=${encodeURIComponent(this.token)}` : '';
+    return `ws://${this.config.host}:${this.config.port}/ws${tokenPart}`;
   }
 
   async loadConfig(): Promise<DeviceConfig> {
@@ -143,7 +159,11 @@ class APIClient {
   }
 
   async sendGateCommand(command: 'OPEN' | 'CLOSE' | 'STOP' | 'TOGGLE'): Promise<void> {
-    await this.client.post('/api/control', { action: command.toLowerCase() });
+    try {
+      await this.client.post('/api/control', { action: command.toLowerCase() });
+    } catch (error) {
+      throw new Error(this.describeAxiosError(error, 'Nie udało się wysłać komendy do bramy'));
+    }
   }
 
   async getMetrics(): Promise<SystemMetrics> {
@@ -168,29 +188,77 @@ class APIClient {
     }
   }
 
+  async getDiagnostics(): Promise<GateDiagnostics> {
+    const response = await this.client.get('/api/diagnostics');
+    return this.mapDiagnostics(response.data.data ?? response.data);
+  }
+
+  async moveGateToPercent(percent: number, maxDistanceM: number | null | undefined): Promise<void> {
+    const bounded = Math.max(0, Math.min(100, Math.round(percent)));
+    const maxDistance = typeof maxDistanceM === 'number' && maxDistanceM > 0 ? maxDistanceM : 10;
+    const position = Number(((bounded / 100) * maxDistance).toFixed(3));
+    try {
+      await this.client.post('/api/move', { position });
+    } catch (error) {
+      throw new Error(this.describeAxiosError(error, 'Nie udało się wysłać pozycji bramy'));
+    }
+  }
+
+  async reboot(): Promise<void> {
+    await this.client.post('/api/reboot');
+  }
+
+  async testMqtt(): Promise<boolean> {
+    const response = await this.client.post('/api/mqtt/test');
+    const data = response.data.data ?? response.data;
+    return Boolean(data?.ok ?? data?.success ?? data?.connected ?? response.status === 200);
+  }
+
+  normalizeGateState(data: any): GateState {
+    return this.mapGateState(data?.data ?? data);
+  }
+
   private normalizePosition(data: any): number {
     const percent =
       data?.positionPercent ??
       data?.gate?.positionPercent ??
-      data?.position ??
-      data?.gate?.position ??
-      0;
+      data?.percent ??
+      data?.gate?.percent;
 
     if (typeof percent === 'number' && Number.isFinite(percent)) {
-      return Math.max(0, Math.min(100, percent));
+      if (percent >= 0) return Math.max(0, Math.min(100, percent));
+    }
+
+    const positionMm = data?.positionMm ?? data?.gate?.positionMm;
+    const positionM =
+      typeof data?.position === 'number' ? data.position :
+      typeof data?.gate?.position === 'number' ? data.gate.position :
+      typeof positionMm === 'number' ? positionMm / 1000 :
+      null;
+    const maxDistance =
+      typeof data?.maxDistance === 'number' ? data.maxDistance :
+      typeof data?.gate?.maxDistance === 'number' ? data.gate.maxDistance :
+      null;
+
+    if (typeof positionM === 'number' && Number.isFinite(positionM)) {
+      if (typeof maxDistance === 'number' && maxDistance > 0) {
+        return Math.max(0, Math.min(100, Math.round((positionM / maxDistance) * 100)));
+      }
+      if (positionM >= 0 && positionM <= 100) return Math.round(positionM);
     }
 
     return 0;
   }
 
-  private normalizeStatus(rawStatus: string, position: number): GateState['status'] {
+  private normalizeStatus(rawStatus: string, position: number, moving: boolean): GateState['status'] {
     const status = rawStatus.toLowerCase();
-    if (status === 'opening') return 'opening';
-    if (status === 'closing') return 'closing';
-    if (status === 'error') return 'error';
-    if (status === 'open') return 'open';
-    if (status === 'closed') return 'closed';
-    if (status === 'stopped') {
+    if (['opening', 'openning', 'opening_gate'].includes(status)) return 'opening';
+    if (['closing', 'closing_gate'].includes(status)) return 'closing';
+    if (['error', 'fault'].includes(status)) return 'error';
+    if (['open', 'opened', 'fully_open'].includes(status)) return 'open';
+    if (['closed', 'close', 'fully_closed'].includes(status)) return 'closed';
+    if (moving) return 'opening';
+    if (['stopped', 'stop', 'idle', 'ready'].includes(status)) {
       if (position >= 98) return 'open';
       if (position <= 2) return 'closed';
       return 'stopped';
@@ -224,11 +292,16 @@ class APIClient {
     const hb = data.hb ?? {};
     const rawState = String(gate.state ?? data.state ?? 'unknown');
     const position = this.normalizePosition(data);
+    const isMoving = Boolean(gate.moving ?? data.moving);
 
     return {
-      status: this.normalizeStatus(rawState, position),
+      status: this.normalizeStatus(rawState, position, isMoving),
       rawState,
       position,
+      maxDistanceM:
+        typeof gate.maxDistance === 'number' ? gate.maxDistance :
+        typeof data.maxDistance === 'number' ? data.maxDistance :
+        null,
       targetPosition:
         typeof gate.targetPosition === 'number'
           ? gate.targetPosition
@@ -236,12 +309,12 @@ class APIClient {
             ? data.targetPosition
             : null,
       lastUpdate: Date.now(),
-      isMoving: Boolean(gate.moving ?? data.moving),
-      wifiConnected: Boolean(wifi.connected),
-      wifiSsid: String(wifi.ssid ?? ''),
-      wifiRssi: typeof wifi.rssi === 'number' ? wifi.rssi : -100,
-      wifiMode: String(wifi.mode ?? ''),
-      ip: String(wifi.ip ?? ''),
+      isMoving,
+      wifiConnected: Boolean(wifi.connected ?? data.wifiConnected),
+      wifiSsid: String(wifi.ssid ?? data.wifiSsid ?? ''),
+      wifiRssi: typeof wifi.rssi === 'number' ? wifi.rssi : typeof data.wifiRssi === 'number' ? data.wifiRssi : -100,
+      wifiMode: String(wifi.mode ?? data.wifiMode ?? ''),
+      ip: String(wifi.ip ?? data.ip ?? this.config.host),
       mqttConnected: Boolean(mqtt.connected ?? data.mqttConnected),
       batteryVoltage: typeof hb.batV === 'number' && hb.batV > 0 ? hb.batV : null,
       currentAmp: typeof hb.iA === 'number' ? hb.iA : typeof data.iA === 'number' ? data.iA : null,
@@ -261,9 +334,12 @@ class APIClient {
         data.openEndstop,
         data.limit_open,
         data.endstop_open,
+        data.inputs?.limitOpen,
+        data.io?.limitOpen,
       ),
       limitClosed: this.readBoolean(
         gate.limitClosed,
+        gate.limitClose,
         gate.closedLimit,
         gate.closeLimit,
         gate.endstopClosed,
@@ -272,6 +348,7 @@ class APIClient {
         gate.limit_closed,
         gate.endstop_closed,
         data.limitClosed,
+        data.limitClose,
         data.closedLimit,
         data.closeLimit,
         data.endstopClosed,
@@ -279,8 +356,15 @@ class APIClient {
         data.closeEndstop,
         data.limit_closed,
         data.endstop_closed,
+        data.inputs?.limitClose,
+        data.io?.limitClose,
       ),
-      distanceM: typeof gate.distanceM === 'number' ? gate.distanceM : typeof data.distanceM === 'number' ? data.distanceM : null,
+      distanceM:
+        typeof gate.position === 'number' ? gate.position :
+        typeof data.positionMm === 'number' ? data.positionMm / 1000 :
+        typeof gate.distanceM === 'number' ? gate.distanceM :
+        typeof data.distanceM === 'number' ? data.distanceM :
+        null,
       pulses: typeof gate.pulses === 'number' ? gate.pulses : typeof data.pulses === 'number' ? data.pulses : null,
     };
   }
@@ -301,20 +385,68 @@ class APIClient {
   }
 
   private mapMetrics(data: any): SystemMetrics {
-    const wifiQuality = data?.wifi?.rssi ? Math.max(0, Math.min(100, 2 * (data.wifi.rssi + 100))) : 0;
+    const runtime = data?.runtime ?? {};
+    const wifi = data?.wifi ?? {};
+    const hb = data?.hb ?? {};
+    const wifiRssi = typeof wifi.rssi === 'number' ? wifi.rssi : typeof data?.wifiRssi === 'number' ? data.wifiRssi : -100;
+    const wifiQuality = wifiRssi > -100 ? Math.max(0, Math.min(100, 2 * (wifiRssi + 100))) : 0;
     return {
-      uptime: data?.uptime ?? data?.uptimeMs ?? 0,
-      heapFree: data?.heapFree ?? 0,
+      uptime: runtime.uptimeMs ?? data?.uptimeMs ?? data?.uptime ?? 0,
+      heapFree: runtime.freeHeap ?? data?.heapFree ?? 0,
       heapTotal: data?.heapTotal ?? data?.fs?.totalBytes ?? 0,
       heapFragmentation: data?.heapFragmentation ?? 0,
-      rssi: data?.rssi ?? data?.wifi?.rssi ?? -100,
+      rssi: wifiRssi,
       wifiQuality: data?.wifiQuality ?? wifiQuality,
       mqttConnected: data?.mqttConnected ?? data?.mqtt?.connected ?? false,
       cpuLoad: data?.cpuLoad ?? 0,
-      temperature: data?.temperature ?? 0,
-      apiRequests: data?.apiRequests ?? 0,
-      apiErrors: data?.apiErrors ?? 0,
+      temperature: data?.temperature ?? hb.temperature ?? 0,
+      apiRequests: runtime.apiReqCount ?? data?.apiRequests ?? 0,
+      apiErrors: runtime.statusErrors ?? data?.apiErrors ?? 0,
     };
+  }
+
+  private mapDiagnostics(data: any): GateDiagnostics {
+    const runtime = data?.runtime ?? {};
+    const hb = data?.hb ?? data?.hoverUart ?? {};
+    const ota = data?.ota ?? {};
+    const mqtt = data?.mqtt ?? {};
+    const wifi = data?.wifi ?? {};
+    return {
+      uptimeMs: runtime.uptimeMs ?? data?.uptimeMs ?? 0,
+      resetReason: String(runtime.resetReason ?? data?.resetReason ?? '-'),
+      heapFree: runtime.freeHeap ?? data?.heapFree ?? 0,
+      minFreeHeap: runtime.minFreeHeap ?? data?.minFreeHeap ?? 0,
+      apiRequests: runtime.apiReqCount ?? data?.apiRequests ?? 0,
+      apiErrors: runtime.statusErrors ?? data?.apiErrors ?? 0,
+      telAgeMs: typeof hb.telAgeMs === 'number' ? hb.telAgeMs : null,
+      hoverFault: Boolean(hb.fault),
+      chargerConnected: Boolean(hb.chargerConnected),
+      chargerKnown: Boolean(hb.chargerKnown),
+      otaActive: Boolean(ota.active),
+      otaReady: Boolean(ota.ready),
+      otaProgress: typeof ota.progress === 'number' ? ota.progress : -1,
+      mqttConnected: Boolean(mqtt.connected ?? data?.mqttConnected),
+      wifiRssi: typeof wifi.rssi === 'number' ? wifi.rssi : -100,
+      firmware: String(data?.build ?? data?.version ?? '-'),
+    };
+  }
+
+  private describeAxiosError(error: unknown, fallback: string): string {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const payload: any = error.response?.data;
+      const backendError =
+        payload?.error?.message ??
+        payload?.error ??
+        payload?.status ??
+        error.message;
+      if (status === 401) return 'Brak autoryzacji. Sprawdź token API w ustawieniach.';
+      if (status === 423) return 'Sterownik jest zajęty OTA i chwilowo blokuje sterowanie.';
+      if (status) return `${fallback}: HTTP ${status} (${backendError})`;
+      if (error.code === 'ECONNABORTED') return 'Sterownik nie odpowiedział w czasie.';
+      return `${fallback}: ${error.message}`;
+    }
+    return fallback;
   }
 }
 

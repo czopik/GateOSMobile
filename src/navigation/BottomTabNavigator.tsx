@@ -6,9 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DashboardScreen } from '../screens/DashboardScreen';
-import { HomeScreen } from '../screens/HomeScreen';
 import { CamerasScreen } from '../screens/CamerasScreen';
+import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { Colors } from '../utils/colors';
@@ -21,9 +20,8 @@ function clamp(value: number, min: number, max: number) {
 }
 
 const TAB_META: Record<string, { icon: string; label: string }> = {
-  Brama: { icon: 'gate', label: 'Brama' },
+  Dashboard: { icon: 'home-outline', label: 'Dashboard' },
   Kamery: { icon: 'cctv', label: 'Kamery' },
-  'Panel Sterowania': { icon: 'view-grid-outline', label: 'Panel sterowania' },
   Ustawienia: { icon: 'cog-outline', label: 'Ustawienia' },
 };
 
@@ -83,7 +81,7 @@ function GateTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               {focused ? (
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(24, 232, 255, 0.18)', 'rgba(24, 232, 255, 0.04)']}
+                  colors={['rgba(0, 224, 131, 0.18)', 'rgba(0, 224, 131, 0.04)']}
                   style={[styles.activeTab, { borderRadius: 17 * scale, margin: 8 * scale }]}
                 />
               ) : null}
@@ -123,9 +121,8 @@ function MainTabs() {
       tabBar={(props: BottomTabBarProps) => <GateTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Brama" component={HomeScreen} />
+      <Tab.Screen name="Dashboard" component={HomeScreen} />
       <Tab.Screen name="Kamery" component={CamerasScreen} />
-      <Tab.Screen name="Panel Sterowania" component={DashboardScreen} />
       <Tab.Screen name="Ustawienia" component={SettingsScreen} />
     </Tab.Navigator>
   );

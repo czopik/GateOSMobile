@@ -28,8 +28,7 @@ export function AuthProvider({ children }: { children: any }) {
       try {
         const stored = await api.init();
         setConfig(stored);
-        // Treat as authenticated when a host is saved — connectivity issues
-        // are shown inline by GateContext.error, not by redirecting to login.
+        // Connectivity issues are shown inline by GateContext.error.
         setIsAuthenticated(Boolean(stored.host));
       } catch {
         setConfig(DEFAULT_DEVICE_CONFIG);

@@ -10,6 +10,7 @@ export interface GateState {
   status: GateStatus;
   rawState: string;
   position: number;
+  maxDistanceM: number | null;
   targetPosition: number | null;
   lastUpdate: number;
   isMoving: boolean;
@@ -52,6 +53,25 @@ export interface SystemMetrics {
   temperature: number;
   apiRequests: number;
   apiErrors: number;
+}
+
+export interface GateDiagnostics {
+  uptimeMs: number;
+  resetReason: string;
+  heapFree: number;
+  minFreeHeap: number;
+  apiRequests: number;
+  apiErrors: number;
+  telAgeMs: number | null;
+  hoverFault: boolean;
+  chargerConnected: boolean;
+  chargerKnown: boolean;
+  otaActive: boolean;
+  otaReady: boolean;
+  otaProgress: number;
+  mqttConnected: boolean;
+  wifiRssi: number;
+  firmware: string;
 }
 
 export interface ApiResponse<T> {
